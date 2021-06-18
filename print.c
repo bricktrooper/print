@@ -56,9 +56,6 @@ struct Format
 
 typedef struct Format Format;
 
-char SPECIFIERS [] = {' ', '+', '-', '0'};
-int NUM_SPECIFIERS = sizeof(SPECIFIERS);
-
 char FORMATS [] = {'c', 'd', 'e', 'f', 'g', 'i', 'o', 's', 'u', 'p', 'x', 'X'};
 int NUM_FORMATS = sizeof(FORMATS);
 
@@ -192,7 +189,7 @@ int parse_format(char * pattern)
 
 	if (length < 1)
 	{
-		log_error("Could not find type specifier for '%s'", pattern);
+		log_error("[ %%%s ] Could not find type specifier", pattern);
 		return ERROR;
 	}
 
@@ -207,133 +204,109 @@ int parse_format(char * pattern)
 	format.accuracy = ERROR;
 
 	format.type = get_type(pattern[length - 1]);
-	log_success("Found type specifier '%c'", pattern[length - 1]);
+	log_success("[ %%%s ] Found type specifier '%c'", pattern, pattern[length - 1]);
 
 	char * address = pattern;
 	char * end = &pattern[length - 1];
+	char character;
 
-	while (address < end)
+	// SIGN //
+
+	if (*address == '+' || *address == ' ')
 	{
-		char character = *address;
-		int increment = 1;
-
-		switch (character)
+		if (format.type == TYPE_S || format.type == TYPE_C)
 		{
-			case '-':
-
-				if (format.alignment != ALIGNMENT_UNKNOWN)
-				{
-					log_error("Found multiple alignment specifiers in '%s'", pattern);
-					return ERROR;
-				}
-
-				format.alignment = ALIGNMENT_LEFT;
-				log_success("Found alignment specifier '%c'", character);
-				break;
-
-			case '+':
-			case ' ':
-			{
-				if (format.sign != SIGN_UNKNOWN)
-				{
-					log_error("Found multiple sign specifiers in '%s'", pattern);
-					return ERROR;
-				}
-
-				format.sign = get_sign(character);
-				log_success("Found sign specifier '%c'", character);
-				break;
-			}
-			case '.':
-			{
-				if (format.type != TYPE_E && format.type != TYPE_F && format.type != TYPE_G)
-				{
-					log_error("Non-floating-point type contained accuracy specifiers in '%s'", pattern);
-					return ERROR;
-				}
-
-				if (format.accuracy != ERROR)
-				{
-					log_error("Found multiple accuracy specifiers in '%s'", pattern);
-					return ERROR;
-				}
-
-				int digits;
-				format.accuracy = parse_int(address + 1, end - address, &digits);
-				log_success("Found %d-digit accuracy specifier '%d'", digits, format.accuracy);
-				increment = digits + 1;
-				break;
-			}
-			case '0':
-			{
-				if (format.zeros)
-				{
-					log_error("Found multiple leading zeros specifiers in '%s'", pattern);
-					return ERROR;
-				}
-
-				log_success("Found leading zeros specifier");
-				format.zeros = true;
-				break;
-			}
-			case '1':
-			case '2':
-			case '3':
-			case '4':
-			case '5':
-			case '6':
-			case '7':
-			case '8':
-			case '9':
-			{
-				if (format.padding != ERROR)
-				{
-					log_error("Found multiple padding specifiers in '%s'", pattern);
-					return ERROR;
-				}
-
-				int digits;
-				format.padding = parse_int(address, end - address, &digits);
-				log_success("Found %d-digit padding specifier '%d'", digits, format.padding);
-				increment = digits;
-				break;
-			}
-			default:
-			{
-				log_error("Unknown format specifier '%c'", character);
-				return ERROR;
-			}
+			log_error("[ %%%s ] Cannot apply signs to non-numeric type", pattern);
+			return ERROR;
 		}
 
-		address += increment;
+		format.sign = get_sign(*address);
+		log_success("[ %%%s ] Found sign specifier '%c'", pattern, *address);
+		address++;
 	}
-
-	if (format.alignment == ALIGNMENT_UNKNOWN)
-	{
-		format.alignment = ALIGNMENT_RIGHT;
-		log_success("Defaulting to right alignment for '%s'", pattern);
-	}
-
-	if (format.sign == SIGN_UNKNOWN)
+	else
 	{
 		format.sign = SIGN_NEGATIVE_ONLY;
-		log_success("Defaulting to only negative signs for '%s'", pattern);
+		log_warning("[ %%%s ] Defaulting to only negative signs'", pattern);
 	}
 
-	if (format.zeros == false)
+	// ALIGNMENT //
+
+	if (*address == '-')
 	{
-		log_success("Defaulting to no leading zeros for '%s'", pattern);
+		format.alignment = ALIGNMENT_LEFT;
+		log_success("[ %%%s ] Found alignment specifier '%c'", pattern, *address);
+		address++;
+	}
+	else
+	{
+		format.alignment = ALIGNMENT_RIGHT;
+		log_warning("[ %%%s ] Defaulting to right alignment'", pattern);
 	}
 
-	if (format.padding == ERROR)
+	// ZEROS //
+
+	if (*address == '0')
 	{
-		log_success("Defaulting to 0 padding for '%s'", pattern);
+		if (format.type == TYPE_S || format.type == TYPE_C)
+		{
+			log_error("[ %%%s ] Cannot apply leading zeros to non-numeric type", pattern);
+			return ERROR;
+		}
+
+		log_success("[ %%%s ] Found leading zeros specifier", pattern);
+		format.zeros = true;
+		address++;
+	}
+	else
+	{
+		log_warning("[ %%%s ] Defaulting to no leading zeros'", pattern);
+		format.zeros = false;
+	}
+
+	// PADDING //
+
+	int digits;
+	format.padding = parse_int(address, end - address, &digits);
+
+	if (digits > 0)
+	{
+		log_success("[ %%%s ] Found %d-digit padding specifier '%d'", pattern, digits, format.padding);
+		address += digits;
+	}
+	else
+	{
+		log_warning("[ %%%s ] Defaulting to 0 padding'", pattern);
 		format.padding = 0;
 	}
 
-	if (format.accuracy == ERROR)
+	// ACCURACY //
+
+	if (*address == '.')
 	{
-		log_success("Defaulting to accuracy 6 for '%s'", pattern);
+		if (format.type != TYPE_E && format.type != TYPE_F && format.type != TYPE_G)
+		{
+			log_error("[ %%%s ] Non-floating-point type contained accuracy specifiers", pattern);
+			return ERROR;
+		}
+
+		int digits;
+		format.accuracy = parse_int(address + 1, end - address, &digits);
+
+		if (digits > 0)
+		{
+			log_success("[ %%%s ] Found %d-digit accuracy specifier '%d'", pattern, digits, format.accuracy);
+			address += (digits + 1);
+		}
+		else
+		{
+			log_warning("[ %%%s ] Defaulting to accuracy 6'", pattern);
+			format.accuracy = 6;
+		}
+	}
+	else if (address == end)
+	{
+		log_warning("[ %%%s ] Defaulting to accuracy 6'", pattern);
 		format.accuracy = 6;
 	}
 }
@@ -342,5 +315,5 @@ int test(void)
 {
 	// when you find the %, run a parser to extract only the format specifier pattern.
 	// need to fix the parser so that it scans the flags before the rest (do it linearly)
-	return parse_format("+-013.2d");
+	return parse_format("-13s");
 }
