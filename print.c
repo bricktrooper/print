@@ -103,6 +103,8 @@ bool is_type(char character)
 			return true;
 		}
 	}
+
+	return false;
 }
 
 int get_length(char * pattern)
@@ -189,7 +191,7 @@ int parse_format(char * pattern)
 
 	if (length < 1)
 	{
-		log_error("[ %%%s ] Could not find type specifier", pattern);
+		log_error("Could not find type specifier");
 		return ERROR;
 	}
 
@@ -204,11 +206,10 @@ int parse_format(char * pattern)
 	format.accuracy = ERROR;
 
 	format.type = get_type(pattern[length - 1]);
-	log_success("[ %%%s ] Found type specifier '%c'", pattern, pattern[length - 1]);
+	log_success("Found type specifier '%c'", pattern[length - 1]);
 
 	char * address = pattern;
 	char * end = &pattern[length - 1];
-	char character;
 
 	// SIGN //
 
@@ -216,18 +217,18 @@ int parse_format(char * pattern)
 	{
 		if (format.type == TYPE_S || format.type == TYPE_C)
 		{
-			log_error("[ %%%s ] Cannot apply signs to non-numeric type", pattern);
+			log_error("Cannot apply signs to non-numeric type");
 			return ERROR;
 		}
 
 		format.sign = get_sign(*address);
-		log_success("[ %%%s ] Found sign specifier '%c'", pattern, *address);
+		log_success("Found sign specifier '%c'", *address);
 		address++;
 	}
 	else
 	{
 		format.sign = SIGN_NEGATIVE_ONLY;
-		log_warning("[ %%%s ] Defaulting to only negative signs'", pattern);
+		log_warning("Defaulting to only negative signs'");
 	}
 
 	// ALIGNMENT //
@@ -235,13 +236,13 @@ int parse_format(char * pattern)
 	if (*address == '-')
 	{
 		format.alignment = ALIGNMENT_LEFT;
-		log_success("[ %%%s ] Found alignment specifier '%c'", pattern, *address);
+		log_success("Found alignment specifier '%c'", *address);
 		address++;
 	}
 	else
 	{
 		format.alignment = ALIGNMENT_RIGHT;
-		log_warning("[ %%%s ] Defaulting to right alignment'", pattern);
+		log_warning("Defaulting to right alignment'");
 	}
 
 	// ZEROS //
@@ -250,17 +251,17 @@ int parse_format(char * pattern)
 	{
 		if (format.type == TYPE_S || format.type == TYPE_C)
 		{
-			log_error("[ %%%s ] Cannot apply leading zeros to non-numeric type", pattern);
+			log_error("Cannot apply leading zeros to non-numeric type");
 			return ERROR;
 		}
 
-		log_success("[ %%%s ] Found leading zeros specifier", pattern);
+		log_success("Found leading zeros specifier");
 		format.zeros = true;
 		address++;
 	}
 	else
 	{
-		log_warning("[ %%%s ] Defaulting to no leading zeros'", pattern);
+		log_warning("Defaulting to no leading zeros'");
 		format.zeros = false;
 	}
 
@@ -271,12 +272,12 @@ int parse_format(char * pattern)
 
 	if (digits > 0)
 	{
-		log_success("[ %%%s ] Found %d-digit padding specifier '%d'", pattern, digits, format.padding);
+		log_success("Found %d-digit padding specifier '%d'", digits, format.padding);
 		address += digits;
 	}
 	else
 	{
-		log_warning("[ %%%s ] Defaulting to 0 padding'", pattern);
+		log_warning("Defaulting to 0 padding'");
 		format.padding = 0;
 	}
 
@@ -286,7 +287,7 @@ int parse_format(char * pattern)
 	{
 		if (format.type != TYPE_E && format.type != TYPE_F && format.type != TYPE_G)
 		{
-			log_error("[ %%%s ] Non-floating-point type contained accuracy specifiers", pattern);
+			log_error("Non-floating-point type contained accuracy specifiers");
 			return ERROR;
 		}
 
@@ -295,25 +296,68 @@ int parse_format(char * pattern)
 
 		if (digits > 0)
 		{
-			log_success("[ %%%s ] Found %d-digit accuracy specifier '%d'", pattern, digits, format.accuracy);
+			log_success("Found %d-digit accuracy specifier '%d'", digits, format.accuracy);
 			address += (digits + 1);
 		}
 		else
 		{
-			log_warning("[ %%%s ] Defaulting to accuracy 6'", pattern);
 			format.accuracy = 6;
+			log_warning("Defaulting to accuracy '%d'", format.accuracy);
 		}
 	}
 	else if (address == end)
 	{
-		log_warning("[ %%%s ] Defaulting to accuracy 6'", pattern);
 		format.accuracy = 6;
+		log_warning("Defaulting to accuracy '%d'", format.accuracy);
 	}
+
+	return length;
 }
 
 int test(void)
 {
-	// when you find the %, run a parser to extract only the format specifier pattern.
-	// need to fix the parser so that it scans the flags before the rest (do it linearly)
-	return parse_format("-13s");
+	char string [] = {"%-13s %+-012.31f 0x%-0X\r\n"};
+
+	char * address = string;
+	char current = *address;
+	int increment;
+
+	while (current != '\0')
+	{
+		current = *address;
+		increment = 1;
+		log_debug("%c", current);
+
+		if (current == '%')
+		{
+			char next = *(address + 1);
+
+			if (next == '\0')
+			{
+				log_error("Missing format at end of string");
+				return ERROR;
+			}
+			else if (next == '%')
+			{
+				log_info("Escaping '%%'");
+				increment = 2;
+			}
+			else
+			{
+				increment = parse_format(address + 1) + 1;
+
+				if (increment == ERROR)
+				{
+					log_error("Failed to parse string format");
+					return ERROR;
+				}
+			}
+		}
+
+		address += increment;
+	}
+
+	printf("%s", string);
+
+	return sizeof(string) - 1;
 }
