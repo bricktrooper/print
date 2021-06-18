@@ -2,23 +2,27 @@
 
 # --- COMPILER --- #
 
-CC =
+CC = gcc
 
 # --- LINKER --- #
 
-LD =
+LD = gcc
 
 # --- DEPENDENCY GENERATOR --- #
 
-MM =
+MM = gcc
 
 # --- COMPILER FLAGS --- #
 
-CCFLAGS +=
+CCFLAGS += -std=c17
+CCFLAGS += -Wall
+CCFLAGS += -Wpedantic
 
 # --- LINKER FLAGS --- #
 
-LDFLAGS +=
+LDFLAGS += -std=c17
+LDFLAGS += -Wall
+LDFLAGS += -Wpedantic
 
 # --- LINKER LIBRARIES --- #
 
@@ -26,11 +30,11 @@ LDLIBS +=
 
 # --- ARTIFACTS FOLDER --- #
 
-ART =
+ART = bin
 
 # --- BINARY EXECUTABLE NAME --- #
 
-EXE =
+EXE = demo
 
 # --- SOURCE FILE DIRECTORIES --- #
 
