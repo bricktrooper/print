@@ -1,5 +1,6 @@
 #include "print.h"
 
+#include <stddef.h>
 #include <stdbool.h>
 
 #include "log.h"
@@ -9,9 +10,9 @@
 
 enum Sign
 {
-	SIGN_POSITIVE,
-	SIGN_NEGATIVE,
+	SIGN_BOTH,
 	SIGN_INVISIBLE_POSITIVE,
+	SIGN_NEGATIVE_ONLY,
 	SIGN_UNKNOWN
 };
 
@@ -90,8 +91,7 @@ Sign get_sign(char character)
 {
 	switch (character)
 	{
-		case '+': return SIGN_POSITIVE;
-		case '-': return SIGN_NEGATIVE;
+		case '+': return SIGN_BOTH;
 		case ' ': return SIGN_INVISIBLE_POSITIVE;
 		default:  return SIGN_UNKNOWN;
 	}
@@ -116,7 +116,6 @@ int get_length(char * pattern)
 	{
 		if (*address == '\0')
 		{
-			log_error("Could not find type specifier for '%s'", pattern);
 			return ERROR;
 		}
 
@@ -126,11 +125,12 @@ int get_length(char * pattern)
 	return address - pattern + 1;
 }
 
-int parse_int(char * string, int length)
+int parse_int(char * string, int length, int * num_digits)
 {
 	int value = 0;
 	int digit;
 	bool done = false;
+	int count = 0;
 
 	for (int i = 0; i < length && !done; i++)
 	{
@@ -174,7 +174,13 @@ int parse_int(char * string, int length)
 		if (!done)
 		{
 			value = (value * 10) + digit;
+			count++;
 		}
+	}
+
+	if (num_digits != NULL)
+	{
+		*num_digits = count;
 	}
 
 	return value;
@@ -183,6 +189,13 @@ int parse_int(char * string, int length)
 int parse_format(char * pattern)
 {
 	int length = get_length(pattern);
+
+	if (length < 1)
+	{
+		log_error("Could not find type specifier for '%s'", pattern);
+		return ERROR;
+	}
+
 	log_debug("Length: %d", length);
 
 	Format format;
@@ -190,20 +203,35 @@ int parse_format(char * pattern)
 	format.alignment = ALIGNMENT_UNKNOWN;
 	format.sign = SIGN_UNKNOWN;
 	format.zeros = false;
-	int padding = ERROR;
-	int accuracy = ERROR;
+	format.padding = ERROR;
+	format.accuracy = ERROR;
 
 	format.type = get_type(pattern[length - 1]);
+	log_success("Found type specifier '%c'", pattern[length - 1]);
 
-	for (int i = 0; i < length - 1; i++)
+	char * address = pattern;
+	char * end = &pattern[length - 1];
+
+	while (address < end)
 	{
-		char character = pattern[i];
-		log_info("%c", character);
+		char character = *address;
+		int increment = 1;
 
 		switch (character)
 		{
-			case '+':
 			case '-':
+
+				if (format.alignment != ALIGNMENT_UNKNOWN)
+				{
+					log_error("Found multiple alignment specifiers in '%s'", pattern);
+					return ERROR;
+				}
+
+				format.alignment = ALIGNMENT_LEFT;
+				log_success("Found alignment specifier '%c'", character);
+				break;
+
+			case '+':
 			case ' ':
 			{
 				if (format.sign != SIGN_UNKNOWN)
@@ -213,14 +241,30 @@ int parse_format(char * pattern)
 				}
 
 				format.sign = get_sign(character);
+				log_success("Found sign specifier '%c'", character);
 				break;
 			}
 			case '.':
 			{
-				// parse accuracy
+				if (format.type != TYPE_E && format.type != TYPE_F && format.type != TYPE_G)
+				{
+					log_error("Non-floating-point type contained accuracy specifiers in '%s'", pattern);
+					return ERROR;
+				}
+
+				if (format.accuracy != ERROR)
+				{
+					log_error("Found multiple accuracy specifiers in '%s'", pattern);
+					return ERROR;
+				}
+
+				int digits;
+				format.accuracy = parse_int(address + 1, end - address, &digits);
+				log_success("Found %d-digit accuracy specifier '%d'", digits, format.accuracy);
+				increment = digits + 1;
 				break;
 			}
-			case 0:
+			case '0':
 			{
 				if (format.zeros)
 				{
@@ -228,6 +272,7 @@ int parse_format(char * pattern)
 					return ERROR;
 				}
 
+				log_success("Found leading zeros specifier");
 				format.zeros = true;
 				break;
 			}
@@ -241,7 +286,16 @@ int parse_format(char * pattern)
 			case '8':
 			case '9':
 			{
-				// parse padding
+				if (format.padding != ERROR)
+				{
+					log_error("Found multiple padding specifiers in '%s'", pattern);
+					return ERROR;
+				}
+
+				int digits;
+				format.padding = parse_int(address, end - address, &digits);
+				log_success("Found %d-digit padding specifier '%d'", digits, format.padding);
+				increment = digits;
 				break;
 			}
 			default:
@@ -250,14 +304,43 @@ int parse_format(char * pattern)
 				return ERROR;
 			}
 		}
+
+		address += increment;
+	}
+
+	if (format.alignment == ALIGNMENT_UNKNOWN)
+	{
+		format.alignment = ALIGNMENT_RIGHT;
+		log_success("Defaulting to right alignment for '%s'", pattern);
+	}
+
+	if (format.sign == SIGN_UNKNOWN)
+	{
+		format.sign = SIGN_NEGATIVE_ONLY;
+		log_success("Defaulting to only negative signs for '%s'", pattern);
+	}
+
+	if (format.zeros == false)
+	{
+		log_success("Defaulting to no leading zeros for '%s'", pattern);
+	}
+
+	if (format.padding == ERROR)
+	{
+		log_success("Defaulting to 0 padding for '%s'", pattern);
+		format.padding = 0;
+	}
+
+	if (format.accuracy == ERROR)
+	{
+		log_success("Defaulting to accuracy 6 for '%s'", pattern);
+		format.accuracy = 6;
 	}
 }
 
 int test(void)
 {
 	// when you find the %, run a parser to extract only the format specifier pattern.
-	char num [] = "1";
-	int res = parse_int(num, sizeof(num) - 1);
-	log_debug("%d %u 0x%X", res, res);
-	return parse_format("-3.2d");
+	// need to fix the parser so that it scans the flags before the rest (do it linearly)
+	return parse_format("+-013.2d");
 }
