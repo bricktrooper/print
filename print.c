@@ -45,12 +45,12 @@ typedef enum Type Type;
 
 struct Format
 {
-	char * string;
-	int length;
 	Type type;
 	Alignment alignment;
 	Sign sign;
-	bool leading_zeros;
+	bool zeros;
+	int padding;
+	int accuracy;
 };
 
 typedef struct Format Format;
@@ -61,7 +61,12 @@ int NUM_SPECIFIERS = sizeof(SPECIFIERS);
 char FORMATS [] = {'c', 'd', 'e', 'f', 'g', 'i', 'o', 's', 'u', 'p', 'x', 'X'};
 int NUM_FORMATS = sizeof(FORMATS);
 
-Type type(char character)
+//void print_format(Format * format)
+//{
+
+//}
+
+Type get_type(char character)
 {
 	switch (character)
 	{
@@ -81,6 +86,17 @@ Type type(char character)
 	}
 }
 
+Sign get_sign(char character)
+{
+	switch (character)
+	{
+		case '+': return SIGN_POSITIVE;
+		case '-': return SIGN_NEGATIVE;
+		case ' ': return SIGN_INVISIBLE_POSITIVE;
+		default:  return SIGN_UNKNOWN;
+	}
+}
+
 bool is_type(char character)
 {
 	for (int i = 0; i < NUM_FORMATS; i++)
@@ -92,45 +108,156 @@ bool is_type(char character)
 	}
 }
 
-int find_length(char * pattern)
+int get_length(char * pattern)
 {
-	char * character = pattern;
+	char * address = pattern;
 
-	while (!is_type(*character))
+	while (!is_type(*address))
 	{
-		if (*character == '\0')
+		if (*address == '\0')
 		{
-			log_error("Found NULL terminator when parsing for type character");
+			log_error("Could not find type specifier for '%s'", pattern);
 			return ERROR;
 		}
 
-		character++;
+		address++;
 	}
 
-	return character - pattern + 1;
+	return address - pattern + 1;
 }
 
-int parse(char * pattern)
+int parse_int(char * string, int length)
 {
+	int value = 0;
+	int digit;
+	bool done = false;
+
+	for (int i = 0; i < length && !done; i++)
+	{
+		switch (string[i])
+		{
+			case '0':
+				digit = 0;
+				break;
+			case '1':
+				digit = 1;
+				break;
+			case '2':
+				digit = 2;
+				break;
+			case '3':
+				digit = 3;
+				break;
+			case '4':
+				digit = 4;
+				break;
+			case '5':
+				digit = 5;
+				break;
+			case '6':
+				digit = 6;
+				break;
+			case '7':
+				digit = 7;
+				break;
+			case '8':
+				digit = 8;
+				break;
+			case '9':
+				digit = 9;
+				break;
+			default:
+				done = true;
+				break;
+		}
+
+		if (!done)
+		{
+			value = (value * 10) + digit;
+		}
+	}
+
+	return value;
+}
+
+int parse_format(char * pattern)
+{
+	int length = get_length(pattern);
+	log_debug("Length: %d", length);
+
 	Format format;
+	format.type = TYPE_UNKNOWN;
+	format.alignment = ALIGNMENT_UNKNOWN;
+	format.sign = SIGN_UNKNOWN;
+	format.zeros = false;
+	int padding = ERROR;
+	int accuracy = ERROR;
 
-	format.length = find_length(pattern);
-	log_debug("%d", format.length);
-	return 0 ;
+	format.type = get_type(pattern[length - 1]);
 
-	//format.type = type(pattern[length - 1]));
-	//return;
+	for (int i = 0; i < length - 1; i++)
+	{
+		char character = pattern[i];
+		log_info("%c", character);
 
-	//for (int i = 0; i < length; i++)
-	//{
-	//	char character = pattern[i];
-	//	log_debug("%c", character);
-	//}
+		switch (character)
+		{
+			case '+':
+			case '-':
+			case ' ':
+			{
+				if (format.sign != SIGN_UNKNOWN)
+				{
+					log_error("Found multiple sign specifiers in '%s'", pattern);
+					return ERROR;
+				}
+
+				format.sign = get_sign(character);
+				break;
+			}
+			case '.':
+			{
+				// parse accuracy
+				break;
+			}
+			case 0:
+			{
+				if (format.zeros)
+				{
+					log_error("Found multiple leading zeros specifiers in '%s'", pattern);
+					return ERROR;
+				}
+
+				format.zeros = true;
+				break;
+			}
+			case '1':
+			case '2':
+			case '3':
+			case '4':
+			case '5':
+			case '6':
+			case '7':
+			case '8':
+			case '9':
+			{
+				// parse padding
+				break;
+			}
+			default:
+			{
+				log_error("Unknown format specifier '%c'", character);
+				return ERROR;
+			}
+		}
+	}
 }
 
 int test(void)
 {
 	// when you find the %, run a parser to extract only the format specifier pattern.
-	parse("-3.2f");
-	return 0;
+	char num [] = "1";
+	int res = parse_int(num, sizeof(num) - 1);
+	log_debug("%d %u 0x%X", res, res);
+	return parse_format("-3.2d");
 }
